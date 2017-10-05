@@ -5,7 +5,7 @@ import collections
 from generic.data_provider.dataset import AbstractDataset
 import os
 
-use_100 = True
+use_100 = False
 
 
 class Picture:
@@ -17,7 +17,7 @@ class Picture:
             self.image_loader = image_builder.build(id, filename=filename)
 
     def get_image(self, **kwargs):
-        return self.image_loader.get_image(kwargs)
+        return self.image_loader.get_image(**kwargs)
 
 
 class Game(object):
