@@ -1,10 +1,3 @@
-# clevr
-Clevr baselines
-
-Still under development!!!
-
-
-
 
 # CLEVR models
 
@@ -18,6 +11,8 @@ and unpublished results from:
 The code was equally developed by Florian Strub (University of Lille) and Harm de Vries (University of Montreal)
 
 The project is part of the CHISTERA - IGLU Project.
+
+PS: more results to come...
 
 #### Summary:
 
