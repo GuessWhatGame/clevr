@@ -42,5 +42,4 @@ class CLEVRBatchifier(object):
         batch['question'], batch['seq_length'] = padder(batch['question'],
                                                         padding_symbol=self.tokenizer.padding_token)
 
-
         return batch

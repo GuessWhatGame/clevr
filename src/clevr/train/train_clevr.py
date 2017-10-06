@@ -17,8 +17,8 @@ from generic.data_provider.image_loader import get_img_builder
 from clevr.data_provider.clevr_tokenizer import CLEVRTokenizer
 from clevr.data_provider.clevr_dataset import CLEVRDataset
 from clevr.data_provider.clevr_batchifier import CLEVRBatchifier
-from clevr.models.clevr_network import CLEVRNetwork
-#from clevr.train.evaluator_listener import VQADumperListener, VQAEvaluator
+from clevr.models.clevr_cbn_network import CLEVRNetwork
+
 
 ###############################
 #  LOAD CONFIG
