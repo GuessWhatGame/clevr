@@ -1,18 +1,16 @@
 {
   "model": {
 
-    "name" : "CLEVR basic baseline with classic attention",
+    "name" : "CLEVR with CBN baseline + classic attention",
 
     "image":
     {
       "image_input": "raw",
-      "extension": "",
       "dim": [224, 224, 3],
       "normalize": true,
 
-
       "resnet_version": 50,
-      "finetune" : [],
+      "finetune" : ["block4"],
 
       "attention" : {
         "mode": "classic",
@@ -21,7 +19,8 @@
 
       "cbn": {
         "use_cbn": true,
-        "excluded_scope_names": ["*"]
+        "cbn_embedding_size": 128,
+        "excluded_scope_names": ["block1", "block2", "block3"]
       }
     },
 
@@ -46,6 +45,5 @@
   },
 
   "dico_name" : "dict.json",
-
   "seed": -1
 }
