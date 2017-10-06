@@ -41,7 +41,7 @@ We introduce a new CLEVR Baseline based on FiLM layers and Conditional Batch Nor
 Our code has internal dependencies called submodules. To properly clone the repository, please use the following git command:\
 
 ```
-git clone --recursive git@github.com:clevr/clevr.git
+git clone --recursive https://github.com/GuessWhatGame/clevr.git
 ```
 
 ### Requirements
