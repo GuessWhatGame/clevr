@@ -17,7 +17,7 @@ from generic.data_provider.image_loader import get_img_builder
 from clevr.data_provider.clevr_tokenizer import CLEVRTokenizer
 from clevr.data_provider.clevr_dataset import CLEVRDataset
 from clevr.data_provider.clevr_batchifier import CLEVRBatchifier
-from clevr.models.clevr_cbn_network import CLEVRNetwork
+from clevr.models.clevr_film_network import FiLMNetwork
 
 
 ###############################
@@ -64,21 +64,21 @@ tokenizer = CLEVRTokenizer(os.path.join(args.data_dir, config["dico_name"]))
 
 # Load data
 logger.info('Loading data..')
-trainset = CLEVRDataset(args.data_dir, which_set="train", image_loader=image_loader)
-validset = CLEVRDataset(args.data_dir, which_set="val", image_loader=image_loader)
-testset = CLEVRDataset(args.data_dir, which_set="test", image_loader=image_loader)
+trainset = CLEVRDataset(args.data_dir, which_set="train", image_builder=image_loader)
+validset = CLEVRDataset(args.data_dir, which_set="val", image_builder=image_loader)
+testset = CLEVRDataset(args.data_dir, which_set="test", image_builder=image_loader)
 
 
 
 # Build Network
 logger.info('Building network..')
-network = CLEVRNetwork(config=config["model"],
+network = FiLMNetwork(config=config["model"],
                        no_words=tokenizer.no_words,
                        no_answers=tokenizer.no_answers)
 
 # Build Optimizer
 logger.info('Building optimizer..')
-optimizer, loss = create_optimizer(network, network.loss, config, finetune=finetune)
+optimizer, loss = create_optimizer(network, network.loss_decay, config, finetune=finetune)
 outputs = [loss, network.accuracy]
 
 
@@ -118,7 +118,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
 
     # Create evaluation tools
     evaluator = Evaluator(sources, network.scope_name, network=network, tokenizer=tokenizer)
-    train_batchifier = CLEVRBatchifier(tokenizer, sources)
+    train_batchifier = CLEVRBatchifier(tokenizer, sources, optim_param=config["config"])
     eval_batchifier = CLEVRBatchifier(tokenizer, sources)
 
 

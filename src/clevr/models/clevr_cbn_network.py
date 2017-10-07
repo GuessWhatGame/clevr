@@ -48,7 +48,7 @@ class CLEVRNetwork(ResnetModel):
             #   PICTURES
             #####################
 
-            self._picture = tf.placeholder(tf.float32, [self.batch_size] + config['image']["dim"], name='picture')
+            self._picture = tf.placeholder(tf.float32, [self.batch_size] + config['image']["dim"], name='image')
             self.picture_out = get_image_features(
                     image=self._picture, question=self.question_lstm,
                     is_training=self._is_training,

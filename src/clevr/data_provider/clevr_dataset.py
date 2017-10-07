@@ -35,7 +35,7 @@ class Game(object):
 class CLEVRDataset(AbstractDataset):
     """Loads the dataset."""
 
-    def __init__(self, folder, which_set, image_loader=None):
+    def __init__(self, folder, which_set, image_builder=None):
 
         question_file_path = '{}/questions/CLEVR_{}_questions.json'.format(folder, which_set)
 
@@ -66,7 +66,7 @@ class CLEVRDataset(AbstractDataset):
                 image_filename = os.path.join(which_set, image_filename)
 
                 games.append(Game(id=question_id,
-                                  picture=Picture(image_id, image_filename, image_loader),
+                                  picture=Picture(image_id, image_filename, image_builder),
                                   question=question,
                                   answer=answer,
                                   question_family_index=question_family_index))
