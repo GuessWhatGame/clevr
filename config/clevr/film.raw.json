@@ -5,16 +5,20 @@
 
     "image":
     {
-      "image_input": "conv",
-      "dim": [14, 14, 1024],
+      "image_input": "raw",
+      "dim": [224, 224, 3],
       "normalize": false,
 
       "resnet_out": "block3/unit_22/bottleneck_v1",
       "resnet_version" : 101,
       "attention" : {
         "mode": "none"
-      }
+      },
 
+      "cbn" : {
+        "use_cbn": true,
+        "excluded_scope_names": ["*"]
+      }
     },
 
     "question": {

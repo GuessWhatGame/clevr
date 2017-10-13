@@ -8,28 +8,28 @@ import os
 use_100 = False
 
 
-class Picture:
-    def __init__(self, id, filename, image_builder):
+class Image:
+    def __init__(self, id, filename, image_builder, which_set):
         self.id = id
         self.filename = filename
 
         if image_builder is not None:
-            self.image_loader = image_builder.build(id, filename=filename)
+            self.image_loader = image_builder.build(id, filename=filename, which_set=which_set)
 
     def get_image(self, **kwargs):
         return self.image_loader.get_image(**kwargs)
 
 
 class Game(object):
-    def __init__(self, id, picture, question, answer, question_family_index):
+    def __init__(self, id, image, question, answer, question_family_index):
         self.id = id
-        self.picture = picture
+        self.image = image
         self.question = question
         self.answer = answer
         self.question_family_index = question_family_index
 
     def __str__(self):
-        return "[#q:{}, #p:{}] {} - {} ({})".format(self.id, self.picture.id, self.question, self.answer, self.question_family_index)
+        return "[#q:{}, #p:{}] {} - {} ({})".format(self.id, self.image.id, self.question, self.answer, self.question_family_index)
 
 
 class CLEVRDataset(AbstractDataset):
@@ -66,7 +66,7 @@ class CLEVRDataset(AbstractDataset):
                 image_filename = os.path.join(which_set, image_filename)
 
                 games.append(Game(id=question_id,
-                                  picture=Picture(image_id, image_filename, image_builder),
+                                  image=Image(image_id, image_filename, image_builder, which_set),
                                   question=question,
                                   answer=answer,
                                   question_family_index=question_family_index))

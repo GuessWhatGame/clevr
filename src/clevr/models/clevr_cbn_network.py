@@ -1,9 +1,11 @@
 import tensorflow as tf
-from generic.tf_models.abstract_network import ResnetModel
+import tensorflow.contrib.layers as tfc_layers
 
-from generic.tf_models import rnn
-from generic.tf_models.image_feature import get_image_features
+from neural_toolbox import rnn
 from neural_toolbox import utils
+
+from generic.tf_utils.abstract_network import ResnetModel
+from generic.tf_factory.image_factory import get_image_features
 
 
 class CLEVRNetwork(ResnetModel):
@@ -29,12 +31,14 @@ class CLEVRNetwork(ResnetModel):
                                    lambda: tf.constant(dropout_keep),
                                    lambda: tf.constant(1.0))
 
-            word_emb = utils.get_embedding(self._question,
-                                           n_words=no_words,
-                                           n_dim=int(config["word_embedding_dim"]),
-                                           scope="word_embedding")
+            word_emb = tfc_layers.embed_sequence(
+                ids=self._question,
+                vocab_size=no_words,
+                embed_dim=config["question"]["word_embedding_dim"],
+                scope="word_embedding",
+                reuse=reuse)
 
-            # word_emb = tf.nn.dropout(word_emb, dropout_keep)
+            word_emb = tf.nn.dropout(word_emb, dropout_keep)
 
             self.question_lstm, self.all_lstm_states = rnn.variable_length_LSTM(
                 word_emb,
@@ -45,16 +49,15 @@ class CLEVRNetwork(ResnetModel):
                 scope="question_lstm")
 
             #####################
-            #   PICTURES
+            #   IMAGES
             #####################
 
-            self._picture = tf.placeholder(tf.float32, [self.batch_size] + config['image']["dim"], name='image')
-            self.picture_out = get_image_features(
-                    image=self._picture, question=self.question_lstm,
+            self._image = tf.placeholder(tf.float32, [self.batch_size] + config['image']["dim"], name='image')
+            self.image_out = get_image_features(
+                    image=self._image, question=self.question_lstm,
                     is_training=self._is_training,
                     scope_name=scope.name,
-                    config=config['image']
-                )
+                    config=config['image'])
 
 
             #####################
@@ -64,9 +67,9 @@ class CLEVRNetwork(ResnetModel):
             with tf.variable_scope('final_mlp'):
 
                 self.question_embedding = utils.fully_connected(self.question_lstm, config["no_question_mlp"], activation=activation_name, scope='question_mlp')
-                self.picture_embedding = utils.fully_connected(self.picture_out, config["no_picture_mlp"], activation=activation_name, scope='picture_mlp')
+                self.image_embedding = utils.fully_connected(self.image_out, config["no_image_mlp"], activation=activation_name, scope='image_mlp')
 
-                full_embedding = self.picture_embedding * self.question_embedding
+                full_embedding = self.image_embedding * self.question_embedding
                 full_embedding = tf.nn.dropout(full_embedding, dropout_keep)
 
                 out = utils.fully_connected(full_embedding, config["no_hidden_final_mlp"], scope='hidden_final', activation=activation_name)

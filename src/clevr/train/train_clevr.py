@@ -3,13 +3,15 @@ import logging
 import os
 import tensorflow as tf
 from distutils.util import strtobool
+import time
 
+from multiprocessing.pool import ThreadPool
 from multiprocessing import Pool
 
 from generic.data_provider.iterator import Iterator
-from generic.tf_utils.evaluator import Evaluator
-from generic.tf_utils.optimizer import create_optimizer
-from generic.tf_utils.ckpt_loader import load_checkpoint
+from generic.tf_utils.evaluator import Evaluator, MultiGPUEvaluator
+from generic.tf_utils.optimizer import create_optimizer,  create_multi_gpu_optimizer
+from generic.tf_utils.ckpt_loader import load_checkpoint, create_resnet_saver
 from generic.utils.config import load_config
 from generic.utils.file_handlers import pickle_dump
 from generic.data_provider.image_loader import get_img_builder
@@ -28,11 +30,13 @@ parser = argparse.ArgumentParser('CLEVR network baseline!')
 
 parser.add_argument("-data_dir", type=str, help="Directory with data")
 parser.add_argument("-img_dir", type=str, help="Directory with image")
+parser.add_argument("-img_buf", type=lambda x:bool(strtobool(x)), default="False", help="Store image in memory (faster but require a lot of RAM)")
 parser.add_argument("-exp_dir", type=str, help="Directory in which experiments are stored")
 parser.add_argument("-config", type=str, help='Config file')
 parser.add_argument("-load_checkpoint", type=str, help="Load model parameters from specified checkpoint")
 parser.add_argument("-continue_exp", type=lambda x:bool(strtobool(x)), default="False", help="Continue previously started experiment?")
 parser.add_argument("-no_thread", type=int, default=1, help="No thread to load batch")
+parser.add_argument("-no_gpu", type=int, default=1, help="How many gpus?")
 parser.add_argument("-gpu_ratio", type=float, default=0.95, help="How many GPU ram is required? (ratio)")
 
 
@@ -43,7 +47,7 @@ logger = logging.getLogger()
 
 
 # Load config
-resnet_version = config['model'].get('resnet_version', 50)
+resnet_version = config['model']["image"].get('resnet_version', 50)
 finetune = config["model"]["image"].get('finetune', list())
 lrt = config['optimizer']['learning_rate']
 batch_size = config['optimizer']['batch_size']
@@ -54,8 +58,8 @@ merge_dataset = config.get("merge_dataset", False)
 
 # Load images
 logger.info('Loading images..')
-image_loader = get_img_builder(config['model']['image'], args.img_dir)
-use_resnet = image_loader.is_raw_image()
+image_builder = get_img_builder(config['model']['image'], args.img_dir, bufferize=args.img_buf)
+use_resnet = image_builder.is_raw_image()
 
 
 # Load dictionary
@@ -64,23 +68,46 @@ tokenizer = CLEVRTokenizer(os.path.join(args.data_dir, config["dico_name"]))
 
 # Load data
 logger.info('Loading data..')
-trainset = CLEVRDataset(args.data_dir, which_set="train", image_builder=image_loader)
-validset = CLEVRDataset(args.data_dir, which_set="val", image_builder=image_loader)
-testset = CLEVRDataset(args.data_dir, which_set="test", image_builder=image_loader)
+trainset = CLEVRDataset(args.data_dir, which_set="train", image_builder=image_builder)
+validset = CLEVRDataset(args.data_dir, which_set="val", image_builder=image_builder)
+testset = CLEVRDataset(args.data_dir, which_set="test", image_builder=image_builder)
 
 
 
 # Build Network
-logger.info('Building network..')
-network = FiLMNetwork(config=config["model"],
-                       no_words=tokenizer.no_words,
-                       no_answers=tokenizer.no_answers)
+logger.info('Building multi_gpu network..')
+networks = []
+# tower_scope_names = []
+# for i in range(args.no_gpu):
+#     logging.info('Building network ({})'.format(i))
+#
+#     with tf.device('gpu:{}'.format(i)):
+#         with tf.name_scope('tower_{}'.format(i)) as tower_scope:
+#
+#             network = FiLMNetwork(
+#                 config=config["model"],
+#                 no_words=tokenizer.no_words,
+#                 no_answers=tokenizer.no_answers,
+#                 reuse=(i > 0), device=i)
+#
+#             networks.append(network)
+#             tower_scope_names.append(os.path.join(tower_scope, network.scope_name))
+
+_network = FiLMNetwork(
+                 config=config["model"],
+                 no_words=tokenizer.no_words,
+                 no_answers=tokenizer.no_answers)
+networks.append(_network)
+
+assert len(networks) > 0, "you need to set no_gpu > 0 even if you are using CPU"
+
+
+
 
 # Build Optimizer
 logger.info('Building optimizer..')
-optimizer, loss = create_optimizer(network, network.loss_decay, config, finetune=finetune)
-outputs = [loss, network.accuracy]
-
+optimizer, train_out, eval_out = create_optimizer(networks[0], config, finetune=finetune)
+#optimizer, train_out, eval_out = create_multi_gpu_optimizer(networks, config, finetune=finetune)
 
 ###############################
 #  START  TRAINING
@@ -90,23 +117,28 @@ outputs = [loss, network.accuracy]
 saver = tf.train.Saver()
 resnet_saver = None
 
-# Retrieve only resnet variabes
+# Retrieve only resnet variables
 if use_resnet:
-    start = len(network.scope_name)+1
-    resnet_vars = {v.name[start:-2]: v for v in network.get_resnet_parameters()}
-    resnet_saver = tf.train.Saver(resnet_vars)
+    resnet_saver = create_resnet_saver(networks)
 
 
 # CPU/GPU option
-cpu_pool = Pool(args.no_thread, maxtasksperchild=1000)
+# h5 requires a Tread pool while raw images requires to create new process
+if image_builder.is_raw_image():
+    cpu_pool = Pool(args.no_thread, maxtasksperchild=1000)
+else:
+    cpu_pool = ThreadPool(args.no_thread)
+    cpu_pool._maxtasksperchild = 1000
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_ratio)
-
 
 with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
 
     # retrieve incoming sources
-    sources = network.get_sources(sess)
+    sources = networks[0].get_sources(sess)
     logger.info("Sources: " + ', '.join(sources))
+
+    # create a writer
+    writer = tf.summary.FileWriter("/home/sequel/fstrub/guesswhat_github/clevr/log", sess.graph)
 
 
     # Load checkpoints or pre-trained networks
@@ -115,10 +147,10 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
     if use_resnet:
         resnet_saver.restore(sess, os.path.join(args.data_dir,'resnet_v1_{}.ckpt'.format(resnet_version)))
 
-
     # Create evaluation tools
-    evaluator = Evaluator(sources, network.scope_name, network=network, tokenizer=tokenizer)
-    train_batchifier = CLEVRBatchifier(tokenizer, sources, optim_param=config["config"])
+    #evaluator = MultiGPUEvaluator(sources, tower_scope_names, networks=networks, tokenizer=tokenizer)
+    evaluator = Evaluator(sources, scope=networks[0].scope_name, network=networks[0], tokenizer=tokenizer)
+    train_batchifier = CLEVRBatchifier(tokenizer, sources)
     eval_batchifier = CLEVRBatchifier(tokenizer, sources)
 
 
@@ -133,7 +165,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
                                   batchifier=train_batchifier,
                                   shuffle=True,
                                   pool=cpu_pool)
-        [train_loss, train_accuracy] = evaluator.process(sess, train_iterator, outputs=outputs + [optimizer])
+        [train_loss, train_accuracy] = evaluator.process(sess, train_iterator, outputs=train_out + [optimizer])
 
 
         valid_loss, valid_accuracy = 0,0
@@ -141,10 +173,10 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
             valid_iterator = Iterator(validset,
                                       batch_size=batch_size*2,
                                       batchifier=eval_batchifier,
-                                      shuffle=True,
+                                      shuffle=False,
                                       pool=cpu_pool)
 
-            [valid_loss, valid_accuracy] = evaluator.process(sess, valid_iterator, outputs=outputs)
+            [valid_loss, valid_accuracy] = evaluator.process(sess, valid_iterator, outputs=eval_out)
 
         logger.info("Training loss: {}".format(train_loss))
         logger.info("Training accuracy: {}".format(train_accuracy))
@@ -174,3 +206,4 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
     #                          pool=cpu_pool)
     # evaluator.process(sess, test_iterator, outputs=[], listener=dumper_eval_listener)
     # logger.info("File dump at {}".format(dumper_eval_listener.out_path))
+

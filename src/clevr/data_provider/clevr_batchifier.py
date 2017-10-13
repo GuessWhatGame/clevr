@@ -6,11 +6,9 @@ from generic.data_provider.nlp_utils import padder
 
 class CLEVRBatchifier(object):
 
-    def __init__(self, tokenizer, sources, optim_param={}):
+    def __init__(self, tokenizer, sources):
         self.tokenizer = tokenizer
         self.sources = sources
-
-        self.weight_decay = optim_param.get("weight_decay", 0.)
 
     def filter(self, games):
         return games
@@ -35,16 +33,14 @@ class CLEVRBatchifier(object):
             batch['answer'].append(answer)
 
             # retrieve the image source type
-            img = game.picture.get_image()
+            img = game.image.get_image()
             if "image" not in batch: # initialize an empty array for better memory consumption
-                batch["image"] = np.zeros((batch_size,) + img.shape)
+                batch["image"] = np.zeros((batch_size,) + img.shape, dtype=np.float32)
             batch["image"][i] = img
 
         # pad the questions
         batch['question'], batch['seq_length'] = padder(batch['question'],
                                                         padding_symbol=self.tokenizer.padding_token)
 
-        # Apply optimization parameters
-        batch['weight_decay'] = self.weight_decay
 
         return batch
