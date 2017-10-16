@@ -2,29 +2,25 @@ import tensorflow as tf
 import tensorflow.contrib.layers as tfc_layers
 import tensorflow.contrib.rnn as tfc_rnn
 
-from generic.tf_factory.image_factory import get_image_features
 from generic.tf_utils.abstract_network import ResnetModel
 
 import neural_toolbox.film_layer as film
 import neural_toolbox.ft_utils as ft_utils
 
 
-
-
-###
-###  Still under development!!!
-###
-
-
-class FiLMNetwork(ResnetModel):
+class FiLM_CLEVRNetwork(ResnetModel):
     def __init__(self, config, no_words, no_answers, reuse=False, device=''):
         ResnetModel.__init__(self, "clevr", device=device)
 
-        with tf.variable_scope(self.scope_name, reuse=reuse) as scope:
+        with tf.variable_scope(self.scope_name, reuse=reuse):
 
             self.batch_size = None
             self._is_training = tf.placeholder(tf.bool, name="is_training")
-            initializer = tfc_layers.variance_scaling_initializer(uniform=True)
+
+            dropout_keep_scalar = float(config.get("dropout_keep_prob", 1.0))
+            dropout_keep = tf.cond(self._is_training,
+                                   lambda: tf.constant(dropout_keep_scalar),
+                                   lambda: tf.constant(1.0))
 
             #####################
             #   QUESTION
@@ -41,13 +37,14 @@ class FiLMNetwork(ResnetModel):
                 scope="word_embedding",
                 reuse=reuse)
 
-            gru_cell = tfc_rnn.GRUCell(
+            # word_emb = tf.nn.dropout(word_emb, dropout_keep)
+            rnn_cell = tfc_rnn.GRUCell(
                 num_units=config["question"]["rnn_state_size"],
                 activation=tf.nn.tanh,
                 reuse=reuse)
 
             _, self.rnn_state = tf.nn.dynamic_rnn(
-                cell=gru_cell,
+                cell=rnn_cell,
                 inputs=word_emb,
                 dtype=tf.float32,
                 sequence_length=self._seq_length)
@@ -57,14 +54,7 @@ class FiLMNetwork(ResnetModel):
             #####################
 
             self._image = tf.placeholder(tf.float32, [self.batch_size] + config['image']["dim"], name='image')
-            self.image_out = get_image_features(
-                image=self._image, question=self.rnn_state,
-                is_training=self._is_training,
-                scope_name=scope.name,
-                config=config['image'],
-                reuse=reuse)
-
-            assert len(self.image_out.get_shape()) == 4, \
+            assert len(self._image.get_shape()) == 4, \
                 "Incorrect image input and/or attention mechanism (should be none)"
 
             #####################
@@ -73,7 +63,7 @@ class FiLMNetwork(ResnetModel):
 
             with tf.variable_scope("stem", reuse=reuse):
 
-                stem_features = self.image_out
+                stem_features = self._image
                 if config["stem"]["spatial_location"]:
                     stem_features = ft_utils.append_spatial_location(stem_features)
 
@@ -83,8 +73,6 @@ class FiLMNetwork(ResnetModel):
                                                    normalizer_fn=tf.layers.batch_normalization,
                                                    normalizer_params={"training": self._is_training, "reuse": reuse},
                                                    activation_fn=tf.nn.relu,
-                                                   weights_initializer=initializer,
-                                                   biases_initializer=initializer,
                                                    reuse=reuse,
                                                    scope="stem_conv")
 
@@ -99,11 +87,13 @@ class FiLMNetwork(ResnetModel):
 
                 for i in range(config["resblock"]["no_resblock"]):
                     with tf.variable_scope("ResBlock_{}".format(i), reuse=reuse):
+
+                        #rnn_dropout = tf.nn.dropout(self.rnn_state , dropout_keep)
+
                         resblock = film.FiLMResblock(res_output, self.rnn_state,
                                                      kernel1=config["resblock"]["kernel1"],
                                                      kernel2=config["resblock"]["kernel2"],
                                                      spatial_location=config["resblock"]["spatial_location"],
-                                                     initializer=initializer,
                                                      is_training=self._is_training,
                                                      reuse=reuse)
 
@@ -127,8 +117,6 @@ class FiLMNetwork(ResnetModel):
                                                       normalizer_fn=tf.layers.batch_normalization,
                                                       normalizer_params={"training": self._is_training, "reuse": reuse},
                                                       activation_fn=tf.nn.relu,
-                                                      weights_initializer=initializer,
-                                                      biases_initializer=initializer,
                                                       reuse=reuse,
                                                       scope="classifier_conv")
 
@@ -137,18 +125,14 @@ class FiLMNetwork(ResnetModel):
                 self.hidden_state = tfc_layers.fully_connected(self.max_pool,
                                                                num_outputs=config["classifier"]["no_mlp_units"],
                                                                normalizer_fn=tf.layers.batch_normalization,
-                                                               normalizer_params={"training": self._is_training, "reuse": reuse},
+                                                               normalizer_params= {"training": self._is_training, "reuse": reuse},
                                                                activation_fn=tf.nn.relu,
                                                                reuse=reuse,
-                                                               weights_initializer=initializer,
-                                                               biases_initializer=initializer,
                                                                scope="classifier_hidden_layer")
 
                 self.out = tfc_layers.fully_connected(self.hidden_state,
                                                              num_outputs=no_answers,
                                                              activation_fn=None,
-                                                             weights_initializer=initializer,
-                                                             biases_initializer=initializer,
                                                              reuse=reuse,
                                                              scope="classifier_softmax_layer")
 
@@ -178,30 +162,28 @@ class FiLMNetwork(ResnetModel):
 
 
 if __name__ == "__main__":
-    FiLMNetwork({
+    FiLM_CLEVRNetwork({
 
     "name" : "CLEVR with FiLM",
 
     "image":
     {
-      "image_input": "raw",
-      "dim": [224, 224, 3],
+      "image_input": "conv",
+      "dim": [14, 14, 1024],
       "normalize": False,
 
       "resnet_out": "block3/unit_22/bottleneck_v1",
       "resnet_version" : 101,
       "attention" : {
         "mode": "none"
-      },
-
-      "cbn" : {
-        "use_cbn": True,
-        "excluded_scope_names": ["*"]
       }
+
     },
 
     "question": {
       "word_embedding_dim": 200,
+      "rnn_cell": "lstm",
+      "layer_norm": False,
       "rnn_state_size": 4096
     },
 
@@ -214,7 +196,7 @@ if __name__ == "__main__":
     "resblock" : {
       "no_resblock" : 4,
       "spatial_location" : True,
-      "kernel1" : [1,1],
+      "kernel1" : [1, 1],
       "kernel2" : [3,3]
     },
 
@@ -223,6 +205,9 @@ if __name__ == "__main__":
       "conv_out": 512,
       "conv_kernel": [1,1],
       "no_mlp_units": 1024
-    }
+    },
 
-  }, no_words=200, no_answers=10)
+    "dropout_keep_prob" : 0.6
+
+  }
+    , no_words=354, no_answers=11)

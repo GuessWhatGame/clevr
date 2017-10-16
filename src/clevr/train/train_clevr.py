@@ -19,7 +19,7 @@ from generic.data_provider.image_loader import get_img_builder
 from clevr.data_provider.clevr_tokenizer import CLEVRTokenizer
 from clevr.data_provider.clevr_dataset import CLEVRDataset
 from clevr.data_provider.clevr_batchifier import CLEVRBatchifier
-from clevr.models.clevr_film_network import FiLMNetwork
+from clevr.models.clever_network_factory import create_network
 
 
 ###############################
@@ -77,27 +77,22 @@ testset = CLEVRDataset(args.data_dir, which_set="test", image_builder=image_buil
 # Build Network
 logger.info('Building multi_gpu network..')
 networks = []
-# tower_scope_names = []
-# for i in range(args.no_gpu):
-#     logging.info('Building network ({})'.format(i))
-#
-#     with tf.device('gpu:{}'.format(i)):
-#         with tf.name_scope('tower_{}'.format(i)) as tower_scope:
-#
-#             network = FiLMNetwork(
-#                 config=config["model"],
-#                 no_words=tokenizer.no_words,
-#                 no_answers=tokenizer.no_answers,
-#                 reuse=(i > 0), device=i)
-#
-#             networks.append(network)
-#             tower_scope_names.append(os.path.join(tower_scope, network.scope_name))
+tower_scope_names = []
+for i in range(args.no_gpu):
+    logging.info('Building network ({})'.format(i))
 
-_network = FiLMNetwork(
-                 config=config["model"],
-                 no_words=tokenizer.no_words,
-                 no_answers=tokenizer.no_answers)
-networks.append(_network)
+    with tf.device('gpu:{}'.format(i)):
+        with tf.name_scope('tower_{}'.format(i)) as tower_scope:
+
+            network = create_network(
+                config=config["model"],
+                no_words=tokenizer.no_words,
+                no_answers=tokenizer.no_answers,
+                reuse=(i > 0), device=i)
+
+            networks.append(network)
+            tower_scope_names.append(os.path.join(tower_scope, network.scope_name))
+
 
 assert len(networks) > 0, "you need to set no_gpu > 0 even if you are using CPU"
 
@@ -106,8 +101,8 @@ assert len(networks) > 0, "you need to set no_gpu > 0 even if you are using CPU"
 
 # Build Optimizer
 logger.info('Building optimizer..')
-optimizer, train_out, eval_out = create_optimizer(networks[0], config, finetune=finetune)
-#optimizer, train_out, eval_out = create_multi_gpu_optimizer(networks, config, finetune=finetune)
+#optimize, outputs = create_optimizer(networks[0], config, finetune=finetune)
+optimize, outputs = create_multi_gpu_optimizer(networks, config, finetune=finetune)
 
 ###############################
 #  START  TRAINING
@@ -122,13 +117,7 @@ if use_resnet:
     resnet_saver = create_resnet_saver(networks)
 
 
-# CPU/GPU option
-# h5 requires a Tread pool while raw images requires to create new process
-if image_builder.is_raw_image():
-    cpu_pool = Pool(args.no_thread, maxtasksperchild=1000)
-else:
-    cpu_pool = ThreadPool(args.no_thread)
-    cpu_pool._maxtasksperchild = 1000
+
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_ratio)
 
 with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
@@ -148,8 +137,8 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
         resnet_saver.restore(sess, os.path.join(args.data_dir,'resnet_v1_{}.ckpt'.format(resnet_version)))
 
     # Create evaluation tools
-    #evaluator = MultiGPUEvaluator(sources, tower_scope_names, networks=networks, tokenizer=tokenizer)
-    evaluator = Evaluator(sources, scope=networks[0].scope_name, network=networks[0], tokenizer=tokenizer)
+    evaluator = MultiGPUEvaluator(sources, tower_scope_names, networks=networks, tokenizer=tokenizer)
+    #evaluator = Evaluator(sources, scope=networks[0].scope_name, network=networks[0], tokenizer=tokenizer)
     train_batchifier = CLEVRBatchifier(tokenizer, sources)
     eval_batchifier = CLEVRBatchifier(tokenizer, sources)
 
@@ -158,6 +147,15 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
     best_val_acc, best_train_acc = 0, 0
     for t in range(start_epoch, no_epoch):
 
+        # CPU/GPU option
+        # h5 requires a Tread pool while raw images requires to create new process
+        if image_builder.is_raw_image():
+            cpu_pool = Pool(args.no_thread, maxtasksperchild=1000)
+        else:
+            cpu_pool = ThreadPool(args.no_thread)
+            cpu_pool._maxtasksperchild = 1000
+
+
         logger.info('Epoch {}/{}..'.format(t + 1,no_epoch))
 
         train_iterator = Iterator(trainset,
@@ -165,7 +163,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
                                   batchifier=train_batchifier,
                                   shuffle=True,
                                   pool=cpu_pool)
-        [train_loss, train_accuracy] = evaluator.process(sess, train_iterator, outputs=train_out + [optimizer])
+        [train_loss, train_accuracy] = evaluator.process(sess, train_iterator, outputs=outputs + [optimize])
 
 
         valid_loss, valid_accuracy = 0,0
@@ -176,7 +174,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
                                       shuffle=False,
                                       pool=cpu_pool)
 
-            [valid_loss, valid_accuracy] = evaluator.process(sess, valid_iterator, outputs=eval_out)
+            [valid_loss, valid_accuracy] = evaluator.process(sess, valid_iterator, outputs=outputs)
 
         logger.info("Training loss: {}".format(train_loss))
         logger.info("Training accuracy: {}".format(train_accuracy))
@@ -190,20 +188,4 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
             logger.info("checkpoint saved...")
 
             pickle_dump({'epoch': t}, save_path.format('status.pkl'))
-
-    # Dump test file to upload on VQA website
-    # logger.info("Compute final {} results...".format(args.test_set))
-
-    # vqa_file_name = "vqa_OpenEnded_mscoco_{}{}_cbn_results.json".format(args.test_set, args.year, config["model"]["name"])
-    # dumper_eval_listener = VQADumperListener(tokenizer, os.path.join(args.exp_dir, save_path.format(vqa_file_name)),
-    #                                               require=network.prediction)
-    #
-    # saver.restore(sess, save_path.format('params.ckpt'))
-    # test_iterator = Iterator(testset,
-    #                          batch_size=batch_size*2,
-    #                          batchifier=eval_batchifier,
-    #                          shuffle=False,
-    #                          pool=cpu_pool)
-    # evaluator.process(sess, test_iterator, outputs=[], listener=dumper_eval_listener)
-    # logger.info("File dump at {}".format(dumper_eval_listener.out_path))
 

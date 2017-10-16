@@ -8,7 +8,7 @@ from generic.tf_utils.abstract_network import ResnetModel
 from generic.tf_factory.image_factory import get_image_features
 
 
-class CLEVRNetwork(ResnetModel):
+class CBN_CLEVRNetwork(ResnetModel):
     def __init__(self, config, no_words, no_answers, reuse=False, device=''):
         ResnetModel.__init__(self, "clevr", device=device)
 
@@ -57,6 +57,7 @@ class CLEVRNetwork(ResnetModel):
                     image=self._image, question=self.question_lstm,
                     is_training=self._is_training,
                     scope_name=scope.name,
+                    dropout_keep=dropout_keep,
                     config=config['image'])
 
 

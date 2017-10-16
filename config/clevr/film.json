@@ -3,6 +3,8 @@
 
     "name" : "CLEVR with FiLM",
 
+    "type" : "film",
+
     "image":
     {
       "image_input": "conv",
@@ -48,8 +50,8 @@
     "no_epoch": 20,
     "learning_rate": 3e-4,
     "batch_size": 64,
-    "clip_val": 0,
-    "weight_decay": 1e-5
+    "clip_val": 0.0,
+    "weight_decay": 1e-06
   },
 
   "dico_name" : "dict.json",

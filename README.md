@@ -1,4 +1,3 @@
-
 # CLEVR models
 
 This repo aims at reproducing the results of CLEVR from the following paper:
@@ -109,32 +108,31 @@ Note that you can also directly execute the experiments in the source folder.
 Before starting the training, one needs to create a dictionary
 
 #### Extract image features
+
+You do not need to extract image feature for VQA + CBN.
+Yet, this code does support any kind of image features as input.
+
 Following the original papers, we are going to extract fc8 features from the coco images by using a VGG-16 network.
 
-First, one need to download the resnet pretrained network (152) provided by [slim-tensorflow](https://github.com/tensorflow/models/tree/master/slim):
+First, you need to download the ResNet-101 pretrained network provided by [slim-tensorflow](https://github.com/tensorflow/models/tree/master/research/slim):
 
 ```
-wget http://download.tensorflow.org/models/vgg_16_2016_08_28.tar.gz -P data/
-tar zxvf data/vgg_16_2016_08_28.tar.gz -C data/
+wget http://download.tensorflow.org/models/resnet_v1_101_2016_08_28.tar.gz -P data/
+tar zxvf data/resnet_v1_101_2016_08_28.tar.gz -C data/
 ```
 
-GuessWhat?! requires to both computes the image features from the full picture
-To do so, you need to use the pythn script guesswhat/src/guesswhat/preprocess_data/extract_img_features.py .
+Them, use the following scripts src/vqa/preprocess_data/extract_img_features.py .
 ```
-array=( img crop )
 for mode in "${array[@]}"; do
-   python src/guesswhat/preprocess_data/extract_img_features.py \
-     -image_dir data/img/raw \
-     -data_dir data \
-     -data_out data \
-     -network vgg \
-     -ckpt data/vgg_16.ckpt \
-     -feature_name fc8 \
-     -mode $mode
-done
+   python src/vqa/preprocess_data/extract_img_features.py \
+     -img_dir data/CLEVR_v1.0/images \
+     -data_dir data/CLEVR_v1.0 \
+     -data_out data/CLEVR_v1.0 \
+     -img_size 224
+     -ckpt data/resnet_v1_101.ckpt \
+     -feature_name block3/unit_22/bottleneck_v1 \
 ```
 
-Noticeably, one can also extract VGG-fc7 or Resnet150-block4 features. Please follow the script documentation for more advanced setting.
 
 
 
@@ -144,7 +142,7 @@ Noticeably, one can also extract VGG-fc7 or Resnet150-block4 features. Please fo
 To create the CLEVR dictionary, you need to use the python script clevr/src/clevr/preprocess_data/create_dico.py .
 
 ```
-python src/clevr/preprocess_data/create_dictionary.py -data_dir data -dict_file dict.json
+python src/clevr/preprocess_data/create_dictionary.py -data_dir data/CLEVR_v1.0 -dict_file dict.json
 ```
 
 
@@ -156,17 +154,23 @@ To do so, you have update the file config/clevr/config.json
 Once the config file is set, you can launch the training step:
 ```
 python src/clevr/train/train_clevr.py \
-   -data_dir data \
-   -img_dir data/img \
-   -config config/clevr/raw.json \
+   -data_dir data/CLEVR_v1.0 \
+   -img_dir data/CLEVR_v1.0 \
+   -config config/clevr/film.json \
    -exp_dir out/clevr \
    -no_thread 2
 ```
 
 After training, we obtained the following results:
 
-TBD
 
+Temporary results:
+-------------------------
+FiLM: ~94-95% accuracy on val
+Please note that this score are lower that the pytorch version.
+We are still finetuning the hyperparameters on tensorflow as there is unfortunately not a clear bijection between both frameworks. (especially for weight decay)
+
+CBN: to come
 
 
 ## FAQ

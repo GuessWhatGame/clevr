@@ -29,8 +29,9 @@ class CLEVRTokenizer:
         self.no_answers = len(self.answer2i)
 
         self.unknown_question_token = self.word2i["<unk>"]
-        self.padding_token = self.word2i["<unk>"]
+        self.padding_token = self.word2i["<padding>"]
 
+        self.padding_answer = self.answer2i["<padding>"]
         self.unknown_answer = self.answer2i["<unk>"]
 
 

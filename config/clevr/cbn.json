@@ -3,6 +3,8 @@
 
     "name" : "CLEVR with CBN baseline + classic attention",
 
+    "type" : "cbn",
+
     "image":
     {
       "image_input": "raw",
