@@ -1,23 +1,16 @@
 #!/usr/bin/env python
-import numpy
 import os
 import tensorflow as tf
-from multiprocessing import Pool
-from tqdm import tqdm
 from distutils.util import strtobool
 import numpy as np
 import argparse
-
-import h5py
 
 import tensorflow.contrib.slim as slim
 import tensorflow.contrib.slim.python.slim.nets.resnet_v1 as resnet_v1
 import tensorflow.contrib.slim.python.slim.nets.resnet_utils as slim_utils
 
 from generic.data_provider.image_loader import RawImageBuilder
-from generic.data_provider.nlp_utils import DummyTokenizer
-from generic.data_provider.iterator import Iterator
-
+from generic.preprocess_data.extract_img_features import extract_features
 
 from clevr.data_provider.clevr_dataset import CLEVRDataset
 from clevr.data_provider.clevr_batchifier import CLEVRBatchifier
@@ -60,85 +53,26 @@ image_builder = RawImageBuilder(args.img_dir,
                                 width=args.img_size,
                                 channel=channel_mean)
 
-
-
 # create network
 print("Create network...")
 with slim.arg_scope(slim_utils.resnet_arg_scope(is_training=False)):
     _, end_points = resnet_v1.resnet_v1_101(images, 1000)  # 1000 is the number of softmax class
 
-    feature_name = os.path.join("resnet_v1_101", args.feature_name) # define the feature name according slim standard
-
-    ft_output = end_points[feature_name]
-    ft_shape = [int(dim) for dim in ft_output.get_shape()[1:]]
+    ft_name = os.path.join("resnet_v1_101", args.feature_name) # define the feature name according slim standard
+    ft_output = end_points[ft_name]
 
 
-#Create a dummy tokenizer for the batchifier
-dummy_tokenizer = DummyTokenizer()
+extract_features(
+    img_input = images,
+    ft_output = ft_output,
+    dataset_cstor = CLEVRDataset,
+    dataset_args = {"folder": args.data_dir, "image_builder":image_builder},
+    batchifier_cstor = CLEVRBatchifier,
+    out_dir = args.out_dir,
+    set_type = args.set_type,
+    network_ckpt=args.ckpt,
+    batch_size = args.batch_size,
+    no_threads = args.no_thread,
+    gpu_ratio = args.gpu_ratio,
+)
 
-
-# CPU/GPU option
-cpu_pool = Pool(args.no_thread, maxtasksperchild=1000)
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_ratio)
-
-with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
-
-    saver = tf.train.Saver()
-    saver.restore(sess, args.ckpt)
-
-    for one_set in args.set_type:
-
-        ############################
-        #   LOAD DATASET
-        ############################
-
-        print("Load dataset...")
-        dataset = CLEVRDataset(args.data_dir, one_set, image_builder=image_builder)
-
-        # hack dataset to only keep one game by image
-        image_id_set = {}
-        games = []
-        for game in dataset.games:
-            if game.image.id not in image_id_set:
-                games.append(game)
-                image_id_set[game.image.id] = 1
-
-        dataset.games = games
-        no_images = len(games)
-
-        # prepare batch builder
-        batchifier = CLEVRBatchifier(tokenizer=dummy_tokenizer, sources=[source])
-        iterator = Iterator(dataset,
-                            batch_size=args.batch_size,
-                            pool=cpu_pool,
-                            batchifier=batchifier,
-                            shuffle=False)
-
-        ############################
-        #  CREATE FEATURES
-        ############################
-        print("Start computing image features...")
-        filepath = os.path.join(args.out_dir, "{}_features.h5".format(one_set))
-        with h5py.File(filepath, 'w') as f:
-
-            feat_dataset = f.create_dataset('features', shape=[no_images] + ft_shape, dtype=np.float32)
-            idx2img = f.create_dataset('idx2img', shape=[no_images], dtype=np.int32)
-            pt_hd5 = 0
-
-            for batch in tqdm(iterator):
-                feat = sess.run(ft_output, feed_dict={images: numpy.array(batch[source])})
-
-                # Store dataset
-                batch_size = len(batch["raw"])
-                feat_dataset[pt_hd5: pt_hd5 + batch_size] = feat
-
-                # Store idx to image.id
-                for i, game in enumerate(batch["raw"]):
-                    idx2img[pt_hd5 + i] = game.image.id
-
-                # update hd5 pointer
-                pt_hd5 += batch_size
-            print("Start dumping file: {}".format(filepath))
-        print("Finished dumping file: {}".format(filepath))
-
-print("Done!")
