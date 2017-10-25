@@ -126,10 +126,6 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
     sources = networks[0].get_sources(sess)
     logger.info("Sources: " + ', '.join(sources))
 
-    # create a writer
-    writer = tf.summary.FileWriter("/home/sequel/fstrub/guesswhat_github/clevr/log", sess.graph)
-
-
     # Load checkpoints or pre-trained networks
     sess.run(tf.global_variables_initializer())
     start_epoch = load_checkpoint(sess, saver, args, save_path)

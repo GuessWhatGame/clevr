@@ -5,12 +5,10 @@ from distutils.util import strtobool
 import numpy as np
 import argparse
 
-import tensorflow.contrib.slim as slim
-import tensorflow.contrib.slim.python.slim.nets.resnet_v1 as resnet_v1
-import tensorflow.contrib.slim.python.slim.nets.resnet_utils as slim_utils
-
 from generic.data_provider.image_loader import RawImageBuilder
 from generic.preprocess_data.extract_img_features import extract_features
+
+from neural_toolbox import resnet
 
 from clevr.data_provider.clevr_dataset import CLEVRDataset
 from clevr.data_provider.clevr_batchifier import CLEVRBatchifier
@@ -24,8 +22,8 @@ parser.add_argument("-data_dir", type=str, required=True,help="Dataset folder")
 parser.add_argument("-out_dir", type=str, required=True, help="Output directory for h5 files")
 parser.add_argument("-set_type", type=list, default=["val", "train", "test"], help='Select the dataset to dump')
 
-
 parser.add_argument("-ckpt", type=str, required=True, help="Path for network checkpoint: ")
+parser.add_argument("-resnet_version", type=int, default=101, choices=[50, 101, 152], help="Pick the resnet version [50/101/152]")
 parser.add_argument("-feature_name", type=str, default="block3/unit_22/bottleneck_v1", help="Pick the name of the network features")
 
 parser.add_argument("-subtract_mean", type=lambda x:bool(strtobool(x)), default="True", help="Preprocess the image by substracting the mean")
@@ -55,11 +53,10 @@ image_builder = RawImageBuilder(args.img_dir,
 
 # create network
 print("Create network...")
-with slim.arg_scope(slim_utils.resnet_arg_scope(is_training=False)):
-    _, end_points = resnet_v1.resnet_v1_101(images, 1000)  # 1000 is the number of softmax class
-
-    ft_name = os.path.join("resnet_v1_101", args.feature_name) # define the feature name according slim standard
-    ft_output = end_points[ft_name]
+ft_output = resnet.create_resnet(images,
+                                 resnet_out=args.feature_name,
+                                 resnet_version=args.resnet_version,
+                                 is_training=False)
 
 
 extract_features(
@@ -73,6 +70,5 @@ extract_features(
     network_ckpt=args.ckpt,
     batch_size = args.batch_size,
     no_threads = args.no_thread,
-    gpu_ratio = args.gpu_ratio,
-)
+    gpu_ratio = args.gpu_ratio)
 
