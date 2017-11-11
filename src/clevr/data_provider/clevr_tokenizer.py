@@ -28,6 +28,7 @@ class CLEVRTokenizer:
         self.no_words = len(self.word2i)
         self.no_answers = len(self.answer2i)
 
+        self.start_token = self.word2i["<start>"]
         self.unknown_question_token = self.word2i["<unk>"]
         self.padding_token = self.word2i["<padding>"]
 
@@ -35,17 +36,17 @@ class CLEVRTokenizer:
         self.unknown_answer = self.answer2i["<unk>"]
 
 
-
     """
     Input: String
     Output: List of tokens
     """
     def encode_question(self, question):
-        tokens = []
+        tokens = [self.start_token]
         for token in self.tokenizer.tokenize(question):
             if token not in self.word2i:
                 token = '<unk>'
             tokens.append(self.word2i[token])
+
         return tokens
 
     def decode_question(self, tokens):

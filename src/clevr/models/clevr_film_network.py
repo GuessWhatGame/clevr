@@ -7,6 +7,8 @@ from generic.tf_utils.abstract_network import ResnetModel
 import neural_toolbox.film_layer as film
 import neural_toolbox.ft_utils as ft_utils
 
+import tensorflow.contrib.slim as slim
+
 
 class FiLM_CLEVRNetwork(ResnetModel):
     def __init__(self, config, no_words, no_answers, reuse=False, device=''):
@@ -70,11 +72,20 @@ class FiLM_CLEVRNetwork(ResnetModel):
                 self.stem_conv = tfc_layers.conv2d(stem_features,
                                                    num_outputs=config["stem"]["conv_out"],
                                                    kernel_size=config["stem"]["conv_kernel"],
-                                                   normalizer_fn=tf.layers.batch_normalization,
-                                                   normalizer_params={"training": self._is_training, "reuse": reuse},
+                                                   normalizer_fn=tfc_layers.batch_norm,
+                                                   normalizer_params={"center": True, "scale": True,
+                                                                    "decay": 0.9,
+                                                                    "is_training": self._is_training,
+                                                                    "reuse": reuse},
                                                    activation_fn=tf.nn.relu,
                                                    reuse=reuse,
                                                    scope="stem_conv")
+
+                # self.stem_conv = tfc_layers.batch_norm(self.stem_conv, center=True, scale=True, decay=0.9, epsilon=1e-5, is_training=self._is_training, reuse=reuse)
+                # self.stem_conv = tf.nn.relu(self.stem_conv)
+
+
+
 
             #####################
             #   FiLM Layers
@@ -87,8 +98,6 @@ class FiLM_CLEVRNetwork(ResnetModel):
 
                 for i in range(config["resblock"]["no_resblock"]):
                     with tf.variable_scope("ResBlock_{}".format(i), reuse=reuse):
-
-                        #rnn_dropout = tf.nn.dropout(self.rnn_state , dropout_keep)
 
                         resblock = film.FiLMResblock(res_output, self.rnn_state,
                                                      kernel1=config["resblock"]["kernel1"],
@@ -114,21 +123,35 @@ class FiLM_CLEVRNetwork(ResnetModel):
                 self.classif_conv = tfc_layers.conv2d(classif_features,
                                                       num_outputs=config["classifier"]["conv_out"],
                                                       kernel_size=config["classifier"]["conv_kernel"],
-                                                      normalizer_fn=tf.layers.batch_normalization,
-                                                      normalizer_params={"training": self._is_training, "reuse": reuse},
+                                                      normalizer_fn=tfc_layers.batch_norm,
+                                                      normalizer_params={"center":True, "scale":True,
+                                                                         "decay":0.9,
+                                                                         "is_training": self._is_training,
+                                                                         "reuse": reuse},
                                                       activation_fn=tf.nn.relu,
                                                       reuse=reuse,
                                                       scope="classifier_conv")
+
+                # self.classif_conv = tfc_layers.batch_norm(self.classif_conv, center=True, scale=True, decay=0.9, epsilon=1e-5, is_training=self._is_training, reuse=reuse)
+                # self.classif_conv = tf.nn.relu(self.classif_conv)
+
 
                 self.max_pool = tf.reduce_max(self.classif_conv, axis=[1,2], keep_dims=False, name="global_max_pool")
 
                 self.hidden_state = tfc_layers.fully_connected(self.max_pool,
                                                                num_outputs=config["classifier"]["no_mlp_units"],
-                                                               normalizer_fn=tf.layers.batch_normalization,
-                                                               normalizer_params= {"training": self._is_training, "reuse": reuse},
+                                                               normalizer_fn=tfc_layers.batch_norm,
+                                                               normalizer_params={"center": True, "scale": True,
+                                                                                  "decay": 0.9,
+                                                                                  "is_training": self._is_training,
+                                                                                  "reuse": reuse},
                                                                activation_fn=tf.nn.relu,
                                                                reuse=reuse,
                                                                scope="classifier_hidden_layer")
+
+                # self.hidden_state = tf.layers.batch_normalization(self.hidden_state, momentum= 0.1, epsilon = 1e-5, training=self._is_training, reuse=reuse)
+                # self.hidden_state = tfc_layers.batch_norm(self.hidden_state, center=True, scale=True, decay=0.9, epsilon=1e-5, is_training=self._is_training, reuse=reuse)
+                # self.hidden_state = tf.nn.relu(self.hidden_state)
 
                 self.out = tfc_layers.fully_connected(self.hidden_state,
                                                              num_outputs=no_answers,

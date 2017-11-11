@@ -74,7 +74,7 @@ class CLEVRDataset(AbstractDataset):
                 self.question_family_index[question_family_index] += 1
                 self.answer_counter[answer] += 1
 
-                if use_100 and len(games) > 100:
+                if use_100 and len(games) > 2000:
                     break
 
         print('{} games loaded...'.format(len(games)))

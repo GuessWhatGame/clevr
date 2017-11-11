@@ -19,11 +19,15 @@ if __name__ == '__main__':
     games = dataset.games
 
     word2i = {'<padding>': 0,
-              '<unk>': 1
+              '<start>': 1,
+              '<end>': 2,
+              '<unk>': 3
               }
 
     answer2i = {'<padding>': 0,
-                '<unk>': 1
+                '<start>': 1,
+                '<end>': 2,
+                '<unk>': 3
                 }
 
     answer2occ = dataset.answer_counter

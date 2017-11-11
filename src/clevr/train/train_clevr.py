@@ -3,10 +3,6 @@ import logging
 import os
 import tensorflow as tf
 from distutils.util import strtobool
-import time
-
-from multiprocessing.pool import ThreadPool
-from multiprocessing import Pool
 
 from generic.data_provider.iterator import Iterator
 from generic.tf_utils.evaluator import Evaluator, MultiGPUEvaluator
@@ -14,6 +10,7 @@ from generic.tf_utils.optimizer import create_optimizer,  create_multi_gpu_optim
 from generic.tf_utils.ckpt_loader import load_checkpoint, create_resnet_saver
 from generic.utils.config import load_config
 from generic.utils.file_handlers import pickle_dump
+from generic.utils.thread_pool import create_cpu_pool
 from generic.data_provider.image_loader import get_img_builder
 
 from clevr.data_provider.clevr_tokenizer import CLEVRTokenizer
@@ -101,8 +98,8 @@ assert len(networks) > 0, "you need to set no_gpu > 0 even if you are using CPU"
 
 # Build Optimizer
 logger.info('Building optimizer..')
-#optimize, outputs = create_optimizer(networks[0], config, finetune=finetune)
-optimize, outputs = create_multi_gpu_optimizer(networks, config, finetune=finetune)
+#optimize, outputs = create_optimizer(networks[0], config["optimizer"], finetune=finetune)
+optimize, outputs = create_multi_gpu_optimizer(networks, config["optimizer"], finetune=finetune)
 
 ###############################
 #  START  TRAINING
@@ -138,19 +135,12 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placem
     train_batchifier = CLEVRBatchifier(tokenizer, sources)
     eval_batchifier = CLEVRBatchifier(tokenizer, sources)
 
-
     # start actual training
     best_val_acc, best_train_acc = 0, 0
     for t in range(start_epoch, no_epoch):
 
-        # CPU/GPU option
-        # h5 requires a Tread pool while raw images requires to create new process
-        if image_builder.is_raw_image():
-            cpu_pool = Pool(args.no_thread, maxtasksperchild=1000)
-        else:
-            cpu_pool = ThreadPool(args.no_thread)
-            cpu_pool._maxtasksperchild = 1000
-
+        # CPU
+        cpu_pool = create_cpu_pool(args.no_thread, use_process=image_builder.require_multiprocess())
 
         logger.info('Epoch {}/{}..'.format(t + 1,no_epoch))
 
