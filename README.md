@@ -166,9 +166,9 @@ After training, we obtained the following results:
 
 Temporary results:
 -------------------------
-FiLM: ~94-95% accuracy on val
-Please note that this score are lower that the pytorch version.
-We are still finetuning the hyperparameters on tensorflow as there is unfortunately not a clear bijection between both frameworks. (especially for weight decay)
+FiLM: ~96% accuracy on val
+Please note that this score is a bit lower that the pytorch version.
+We assume that this difference is mainly due to numerical stability.
 
 CBN: to come
 
