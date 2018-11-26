@@ -5,13 +5,11 @@ This repo aims at reproducing the results of CLEVR from the following paper:
 - FiLM: Visual Reasoning with a General Conditioning Layer [2] https://arxiv.org/abs/1709.07871
 
 and unpublished results from:
--  Modulating early visual processing by language [1] https://arxiv.org/abs/1707.00683
+- Modulating early visual processing by language [1] https://arxiv.org/abs/1707.00683
 
 The code was equally developed by Florian Strub (University of Lille) and Harm de Vries (University of Montreal)
 
 The project is part of the CHISTERA - IGLU Project.
-
-PS: more results to come...
 
 #### Summary:
 
@@ -90,11 +88,6 @@ To download the CLEVR dataset please use wget:
 wget https://s3-us-west-1.amazonaws.com/clevr/CLEVR_v1.0.zip -P data/
 ```
 
-
-### Pretrained networks
-
-TO COME
-
 ## Reproducing results
 
 To launch the experiments in the local directory, you first have to set the pyhton path:
@@ -134,9 +127,6 @@ for mode in "${array[@]}"; do
 ```
 
 
-
-
-
 #### Create dictionary
 
 To create the CLEVR dictionary, you need to use the python script clevr/src/clevr/preprocess_data/create_dico.py .
@@ -144,8 +134,6 @@ To create the CLEVR dictionary, you need to use the python script clevr/src/clev
 ```
 python src/clevr/preprocess_data/create_dictionary.py -data_dir data/CLEVR_v1.0 -dict_file dict.json
 ```
-
-
 
 ### Train Model
 To train the network, you need to select/configure the kind of neural architecure you want.

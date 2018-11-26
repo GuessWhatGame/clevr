@@ -1,0 +1,54 @@
+{
+  "name" : "Baseline",
+
+  "model": {
+
+    "type" : "baseline",
+
+    "image": {
+      "image_input": "conv",
+      "dim": [14, 14, 1024],
+      "normalize": false
+    },
+
+    "question": {
+      "word_embedding_dim": 200,
+      "glove" : false,
+
+      "cell": "gru",
+      "rnn_state_size": 1024,
+      "bidirectional" : false,
+      "layer_norm" : false,
+      "max_pool" : false
+    },
+
+    "pooling" : {
+      "mode": "classic",
+      "no_attention_mlp": 256
+    },
+
+    "fusion": {
+      "mode" : "vis",
+      "projection_size": 512
+    },
+
+    "classifier":
+    {
+      "no_mlp_units": 512
+    },
+
+    "dropout_keep_prob": 0.5
+  },
+
+  "optimizer": {
+    "no_epoch": 20,
+    "learning_rate": 1e-4,
+    "clip_val": 0,
+    "batch_size": 64,
+    "weight_decay": 0,
+    "weight_decay_add": [],
+    "weight_decay_remove": []
+  },
+
+  "seed": -1
+}

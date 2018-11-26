@@ -5,173 +5,166 @@ import tensorflow as tf
 from distutils.util import strtobool
 
 from generic.data_provider.iterator import Iterator
-from generic.tf_utils.evaluator import Evaluator, MultiGPUEvaluator
-from generic.tf_utils.optimizer import create_optimizer,  create_multi_gpu_optimizer
-from generic.tf_utils.ckpt_loader import load_checkpoint, create_resnet_saver
+from generic.tf_utils.evaluator import Evaluator
+from generic.tf_utils.optimizer import create_optimizer
+from generic.tf_utils.ckpt_loader import create_resnet_saver
 from generic.utils.config import load_config
-from generic.utils.file_handlers import pickle_dump
 from generic.utils.thread_pool import create_cpu_pool
 from generic.data_provider.image_loader import get_img_builder
 
 from clevr.data_provider.clevr_tokenizer import CLEVRTokenizer
 from clevr.data_provider.clevr_dataset import CLEVRDataset
 from clevr.data_provider.clevr_batchifier import CLEVRBatchifier
-from clevr.models.clever_network_factory import create_network
+from clevr.models.network_factory import create_network
 
 
-###############################
-#  LOAD CONFIG
-#############################
+if __name__ == '__main__':
 
-parser = argparse.ArgumentParser('CLEVR network baseline!')
+    ###############################
+    #  LOAD CONFIG
+    #############################
 
-parser.add_argument("-data_dir", type=str, help="Directory with data")
-parser.add_argument("-img_dir", type=str, help="Directory with image")
-parser.add_argument("-img_buf", type=lambda x:bool(strtobool(x)), default="False", help="Store image in memory (faster but require a lot of RAM)")
-parser.add_argument("-exp_dir", type=str, help="Directory in which experiments are stored")
-parser.add_argument("-config", type=str, help='Config file')
-parser.add_argument("-load_checkpoint", type=str, help="Load model parameters from specified checkpoint")
-parser.add_argument("-continue_exp", type=lambda x:bool(strtobool(x)), default="False", help="Continue previously started experiment?")
-parser.add_argument("-no_thread", type=int, default=1, help="No thread to load batch")
-parser.add_argument("-no_gpu", type=int, default=1, help="How many gpus?")
-parser.add_argument("-gpu_ratio", type=float, default=0.95, help="How many GPU ram is required? (ratio)")
+    parser = argparse.ArgumentParser('Oracle network baseline!')
 
+    parser.add_argument("-data_dir", type=str, help="Directory with data")
+    parser.add_argument("-out_dir", type=str, help="Directory in which experiments are stored")
+    parser.add_argument("-config", type=str, help='Config file')
+    parser.add_argument("-dict_file", type=str, default="dict.json", help="Dictionary file name")
+    parser.add_argument("-img_dir", type=str, help='Directory with images')
+    parser.add_argument("-crop_dir", type=str, help='Directory with crops')
+    parser.add_argument("-load_checkpoint", type=str, help="Load model parameters from specified checkpoint")
+    parser.add_argument("-continue_exp", type=lambda x: bool(strtobool(x)), default="False", help="Continue previously started experiment?")
+    parser.add_argument("-gpu_ratio", type=float, default=0.95, help="How many GPU ram is required? (ratio)")
+    parser.add_argument("-no_thread", type=int, default=2, help="No thread to load batch")
+    parser.add_argument("-no_games_to_load", type=int, default=float("inf"), help="No games to use during training Default : all")
 
-args = parser.parse_args()
+    args = parser.parse_args()
 
-config, exp_identifier, save_path = load_config(args.config, args.exp_dir)
-logger = logging.getLogger()
+    config, xp_manager = load_config(args)
+    logger = logging.getLogger()
 
+    # Load config
+    finetune = config["model"]["image"].get('finetune', list())
+    batch_size = config['optimizer']['batch_size']
+    no_epoch = config["optimizer"]["no_epoch"]
 
-# Load config
-resnet_version = config['model']["image"].get('resnet_version', 50)
-finetune = config["model"]["image"].get('finetune', list())
-lrt = config['optimizer']['learning_rate']
-batch_size = config['optimizer']['batch_size']
-clip_val = config['optimizer']['clip_val']
-no_epoch = config["optimizer"]["no_epoch"]
-merge_dataset = config.get("merge_dataset", False)
+    ###############################
+    #  LOAD DATA
+    #############################
 
+    # Load image
+    image_builder, crop_builder = None, None
+    logger.info('Loading images..')
+    image_builder = get_img_builder(config['model']['image'], args.img_dir)
+    use_resnet = image_builder.is_raw_image()
 
-# Load images
-logger.info('Loading images..')
-image_builder = get_img_builder(config['model']['image'], args.img_dir, bufferize=args.img_buf)
-use_resnet = image_builder.is_raw_image()
+    # Load data
+    logger.info('Loading data..')
+    trainset = CLEVRDataset(args.data_dir, "train", image_builder, args.no_games_to_load)
+    validset = CLEVRDataset(args.data_dir, "valid", image_builder, args.no_games_to_load)
+    testset = CLEVRDataset(args.data_dir, "test", image_builder, args.no_games_to_load)
 
+    # Load dictionary
+    logger.info('Loading dictionary..')
+    tokenizer = CLEVRTokenizer(args.dict_file)
 
-# Load dictionary
-logger.info('Loading dictionary..')
-tokenizer = CLEVRTokenizer(os.path.join(args.data_dir, config["dico_name"]))
+    # Build Network
+    logger.info('Building network..')
+    network = create_network(config["model"],
+                             num_words=tokenizer.no_words,
+                             num_answers=tokenizer.no_answers)
 
-# Load data
-logger.info('Loading data..')
-trainset = CLEVRDataset(args.data_dir, which_set="train", image_builder=image_builder)
-validset = CLEVRDataset(args.data_dir, which_set="val", image_builder=image_builder)
-testset = CLEVRDataset(args.data_dir, which_set="test", image_builder=image_builder)
+    # Build Optimizer
+    logger.info('Building optimizer..')
+    optimizer, outputs = create_optimizer(network, config["optimizer"], finetune=finetune)
 
+    ###############################
+    #  START  TRAINING
+    #############################
 
+    # create a saver to store/load checkpoint
+    saver = tf.train.Saver()
+    resnet_saver = None
 
-# Build Network
-logger.info('Building multi_gpu network..')
-networks = []
-tower_scope_names = []
-for i in range(args.no_gpu):
-    logging.info('Building network ({})'.format(i))
-
-    with tf.device('gpu:{}'.format(i)):
-        with tf.name_scope('tower_{}'.format(i)) as tower_scope:
-
-            network = create_network(
-                config=config["model"],
-                no_words=tokenizer.no_words,
-                no_answers=tokenizer.no_answers,
-                reuse=(i > 0), device=i)
-
-            networks.append(network)
-            tower_scope_names.append(os.path.join(tower_scope, network.scope_name))
-
-
-assert len(networks) > 0, "you need to set no_gpu > 0 even if you are using CPU"
-
-
-
-
-# Build Optimizer
-logger.info('Building optimizer..')
-#optimize, outputs = create_optimizer(networks[0], config["optimizer"], finetune=finetune)
-optimize, outputs = create_multi_gpu_optimizer(networks, config["optimizer"], finetune=finetune)
-
-###############################
-#  START  TRAINING
-#############################
-
-# create a saver to store/load checkpoint
-saver = tf.train.Saver()
-resnet_saver = None
-
-# Retrieve only resnet variables
-if use_resnet:
-    resnet_saver = create_resnet_saver(networks)
-
-
-
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_ratio)
-
-with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
-
-    # retrieve incoming sources
-    sources = networks[0].get_sources(sess)
-    logger.info("Sources: " + ', '.join(sources))
-
-    # Load checkpoints or pre-trained networks
-    sess.run(tf.global_variables_initializer())
-    start_epoch = load_checkpoint(sess, saver, args, save_path)
+    # Retrieve only resnet variables
     if use_resnet:
-        resnet_saver.restore(sess, os.path.join(args.data_dir,'resnet_v1_{}.ckpt'.format(resnet_version)))
+        resnet_saver = create_resnet_saver([network])
 
-    # Create evaluation tools
-    evaluator = MultiGPUEvaluator(sources, tower_scope_names, networks=networks, tokenizer=tokenizer)
-    #evaluator = Evaluator(sources, scope=networks[0].scope_name, network=networks[0], tokenizer=tokenizer)
-    train_batchifier = CLEVRBatchifier(tokenizer, sources)
-    eval_batchifier = CLEVRBatchifier(tokenizer, sources)
+    # CPU/GPU option
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_ratio)
 
-    # start actual training
-    best_val_acc, best_train_acc = 0, 0
-    for t in range(start_epoch, no_epoch):
+    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, allow_soft_placement=True)) as sess:
 
-        # CPU
+        sources = network.get_sources(sess)
+        logger.info("Sources: " + ', '.join(sources))
+
+        sess.run(tf.global_variables_initializer())
+        if use_resnet:
+            resnet_version = config['model']["image"]['resnet_version']
+            resnet_saver.restore(sess, os.path.join(args.data_dir, 'resnet_v1_{}.ckpt'.format(resnet_version)))
+
+        sess.run(tf.global_variables_initializer())
+        if args.continue_exp or args.load_checkpoint is not None:
+            start_epoch = xp_manager.load_checkpoint(sess, saver)
+        else:
+            start_epoch = 0
+
+        # create training tools
+        evaluator = Evaluator(sources, network.scope_name, network=network, tokenizer=tokenizer)
+        batchifier = CLEVRBatchifier(tokenizer)
+        xp_manager.configure_score_tracking("valid_accuracy", max_is_best=True)
+
+        for t in range(start_epoch, no_epoch):
+            logger.info('Epoch {}..'.format(t + 1))
+
+            # Create cpu pools (at each iteration otherwise threads may become zombie - python bug)
+            cpu_pool = create_cpu_pool(args.no_thread, use_process=image_builder.require_multiprocess())
+
+            train_iterator = Iterator(trainset,
+                                      batch_size=batch_size, pool=cpu_pool,
+                                      batchifier=batchifier,
+                                      shuffle=True)
+            train_loss, train_accuracy = evaluator.process(sess, train_iterator, outputs=outputs + [optimizer])
+
+            valid_iterator = Iterator(validset, pool=cpu_pool,
+                                      batch_size=batch_size*2,
+                                      batchifier=batchifier,
+                                      shuffle=False)
+            valid_loss, valid_accuracy = evaluator.process(sess, valid_iterator, outputs=outputs)
+
+            logger.info("Training loss      : {}".format(train_loss))
+            logger.info("Training accuracy  : {}".format(train_accuracy))
+            logger.info("Validation loss    : {}".format(valid_loss))
+            logger.info("Validation accuracy: {}".format(valid_accuracy))
+
+            xp_manager.save_checkpoint(sess, saver,
+                                       epoch=t,
+                                       extra_losses=dict(
+                                           train_accuracy=train_accuracy,
+                                           valid_accuracy=valid_accuracy,
+                                           train_loss=train_loss,
+                                           valid_loss=valid_loss,
+                                       ))
+
+        # Load early stopping
+        xp_manager.load_checkpoint(sess, saver, load_best=True)
         cpu_pool = create_cpu_pool(args.no_thread, use_process=image_builder.require_multiprocess())
 
-        logger.info('Epoch {}/{}..'.format(t + 1,no_epoch))
+        # Create Listener
+        test_iterator = Iterator(testset, pool=cpu_pool,
+                                 batch_size=batch_size*2,
+                                 batchifier=batchifier,
+                                 shuffle=False)
+        [test_loss, test_accuracy] = evaluator.process(sess, test_iterator, outputs)
 
-        train_iterator = Iterator(trainset,
-                                  batch_size=batch_size,
-                                  batchifier=train_batchifier,
-                                  shuffle=True,
-                                  pool=cpu_pool)
-        [train_loss, train_accuracy] = evaluator.process(sess, train_iterator, outputs=outputs + [optimize])
+        logger.info("Testing loss: {}".format(test_loss))
+        logger.info("Testing error: {}".format(1-test_accuracy))
 
-
-        valid_loss, valid_accuracy = 0,0
-        if not merge_dataset:
-            valid_iterator = Iterator(validset,
-                                      batch_size=batch_size*2,
-                                      batchifier=eval_batchifier,
-                                      shuffle=False,
-                                      pool=cpu_pool)
-
-            [valid_loss, valid_accuracy] = evaluator.process(sess, valid_iterator, outputs=outputs)
-
-        logger.info("Training loss: {}".format(train_loss))
-        logger.info("Training accuracy: {}".format(train_accuracy))
-        logger.info("Validation loss: {}".format(valid_loss))
-        logger.info("Validation accuracy: {}".format(valid_accuracy))
-
-        if valid_accuracy >= best_val_acc:
-            best_train_acc = train_accuracy
-            best_val_acc = valid_accuracy
-            saver.save(sess, save_path.format('params.ckpt'))
-            logger.info("checkpoint saved...")
-
-            pickle_dump({'epoch': t}, save_path.format('status.pkl'))
+        # Save the test scores
+        xp_manager.update_user_data(
+            user_data={
+                "test_loss": test_loss,
+                "test_accuracy": test_accuracy,
+            }
+        )
 

@@ -3,12 +3,10 @@ import numpy as np
 from generic.data_provider.nlp_utils import padder
 
 
-
 class CLEVRBatchifier(object):
 
-    def __init__(self, tokenizer, sources):
+    def __init__(self, tokenizer):
         self.tokenizer = tokenizer
-        self.sources = sources
 
     def filter(self, games):
         return games
@@ -29,7 +27,7 @@ class CLEVRBatchifier(object):
             batch['question'].append(question)
 
             # Get answers
-            answer =  self.tokenizer.encode_answer(game.answer)
+            answer = self.tokenizer.encode_answer(game.answer)
             batch['answer'].append(answer)
 
             # retrieve the image source type

@@ -35,7 +35,7 @@ class Game(object):
 class CLEVRDataset(AbstractDataset):
     """Loads the dataset."""
 
-    def __init__(self, folder, which_set, image_builder=None):
+    def __init__(self, folder, which_set, image_builder=None, games_to_load=float("inf")):
 
         question_file_path = '{}/questions/CLEVR_{}_questions.json'.format(folder, which_set)
 
@@ -74,7 +74,7 @@ class CLEVRDataset(AbstractDataset):
                 self.question_family_index[question_family_index] += 1
                 self.answer_counter[answer] += 1
 
-                if use_100 and len(games) > 2000:
+                if len(games) >= games_to_load:
                     break
 
         print('{} games loaded...'.format(len(games)))
