@@ -154,16 +154,6 @@ if __name__ == '__main__':
                                  batch_size=batch_size*2,
                                  batchifier=batchifier,
                                  shuffle=False)
-        [test_loss, test_accuracy] = evaluator.process(sess, test_iterator, outputs)
 
-        logger.info("Testing loss: {}".format(test_loss))
-        logger.info("Testing error: {}".format(1-test_accuracy))
-
-        # Save the test scores
-        xp_manager.update_user_data(
-            user_data={
-                "test_loss": test_loss,
-                "test_accuracy": test_accuracy,
-            }
-        )
-
+        # TODO: create listener to dump test results
+        # evaluator.process(sess, test_iterator, [], listener=None)

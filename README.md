@@ -70,7 +70,7 @@ clevr
 └── src            # source files
 ```
 
-To complete the git-clone file arhictecture, you can do:
+To complete the git-clone file architecture, you can do:
 
 ```
 cd guesswhat
@@ -144,7 +144,7 @@ Once the config file is set, you can launch the training step:
 python src/clevr/train/train_clevr.py \
    -data_dir data/CLEVR_v1.0 \
    -img_dir data/CLEVR_v1.0 \
-   -config config/clevr/film.json \
+   -config config/clevr/config.film.json \
    -exp_dir out/clevr \
    -no_thread 2
 ```
@@ -157,13 +157,6 @@ Temporary results:
 FiLM: ~96% accuracy on val
 Please note that this score is a bit lower that the pytorch version.
 We assume that this difference is mainly due to numerical stability.
-
-CBN: to come
-
-
-## FAQ
-
- - When I start a python script, I have the following message: ImportError: No module named generic.data_provider.iterator (or equivalent module). It is likely that your python path is not correctly set. Add the "src" folder to your python path (PYTHONPATH=src)
 
 
 ## Citation
@@ -185,11 +178,11 @@ CBN: to come
 }
 
 @inproceedings{guesswhat_game,
-author = {Harm de Vries and Florian Strub and J\'er\'emie Mary and Hugo Larochelle and Olivier Pietquin and Aaron C. Courville},
-title = {Modulating early visual processing by language},
-booktitle = {Advances in Neural Information Processing Systems 30},
-year = {2017}
-url = {https://arxiv.org/abs/1707.00683}
+  author = {Harm de Vries and Florian Strub and J\'er\'emie Mary and Hugo Larochelle and Olivier Pietquin and Aaron C. Courville},
+  title = {Modulating early visual processing by language},
+  booktitle = {Advances in Neural Information Processing Systems 30},
+  year = {2017}
+  url = {https://arxiv.org/abs/1707.00683}
 }
 ```
 

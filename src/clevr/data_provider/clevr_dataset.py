@@ -81,8 +81,6 @@ class CLEVRDataset(AbstractDataset):
         super(CLEVRDataset, self).__init__(games)
 
 
-
-
 if __name__ == '__main__':
     dataset = CLEVRDataset("/home/fstrub/Projects/clevr_data/", which_set="val")
 
