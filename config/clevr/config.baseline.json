@@ -16,9 +16,9 @@
       "glove" : false,
 
       "cell": "gru",
-      "rnn_state_size": 1024,
-      "bidirectional" : false,
-      "layer_norm" : false,
+      "rnn_state_size": 2048,
+      "bidirectional" : true,
+      "layer_norm" : true,
       "max_pool" : false
     },
 

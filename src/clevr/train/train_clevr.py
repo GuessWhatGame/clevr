@@ -24,14 +24,13 @@ if __name__ == '__main__':
     #  LOAD CONFIG
     #############################
 
-    parser = argparse.ArgumentParser('Oracle network baseline!')
+    parser = argparse.ArgumentParser('CLEVR network baseline!')
 
     parser.add_argument("-data_dir", type=str, help="Directory with data")
     parser.add_argument("-out_dir", type=str, help="Directory in which experiments are stored")
     parser.add_argument("-config", type=str, help='Config file')
     parser.add_argument("-dict_file", type=str, default="dict.json", help="Dictionary file name")
     parser.add_argument("-img_dir", type=str, help='Directory with images')
-    parser.add_argument("-crop_dir", type=str, help='Directory with crops')
     parser.add_argument("-load_checkpoint", type=str, help="Load model parameters from specified checkpoint")
     parser.add_argument("-continue_exp", type=lambda x: bool(strtobool(x)), default="False", help="Continue previously started experiment?")
     parser.add_argument("-gpu_ratio", type=float, default=0.95, help="How many GPU ram is required? (ratio)")
@@ -61,7 +60,7 @@ if __name__ == '__main__':
     # Load data
     logger.info('Loading data..')
     trainset = CLEVRDataset(args.data_dir, "train", image_builder, args.no_games_to_load)
-    validset = CLEVRDataset(args.data_dir, "valid", image_builder, args.no_games_to_load)
+    validset = CLEVRDataset(args.data_dir, "val", image_builder, args.no_games_to_load)
     testset = CLEVRDataset(args.data_dir, "test", image_builder, args.no_games_to_load)
 
     # Load dictionary
@@ -139,7 +138,7 @@ if __name__ == '__main__':
 
             xp_manager.save_checkpoint(sess, saver,
                                        epoch=t,
-                                       extra_losses=dict(
+                                       losses=dict(
                                            train_accuracy=train_accuracy,
                                            valid_accuracy=valid_accuracy,
                                            train_loss=train_loss,
